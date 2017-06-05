@@ -184,6 +184,16 @@ public:
 	virtual ssize_t shouldRecv(int const fd) = 0;
 	/** @brief override to send to fd when just fd writeable */
 	virtual ssize_t shouldSend(int const fd);
+	ssize_t hasData() const;
+	ssize_t recvAll(std::vector<uint8_t>& buffer);
+	ssize_t send(
+		std::vector<uint8_t> const& buffer,
+		size_t const each = SIZE_MAX);
+	ssize_t send(
+		uint8_t const* const buffer,
+		size_t const count,
+		size_t const each = SIZE_MAX);
+	int flush();
 	void updatePortSettings();
 	static std::string getFullPortName(std::string const& portName);
 	static struct termios& baudRateToTermios(
@@ -197,6 +207,8 @@ private:
 		uint32_t const openFlag = static_cast<uint32_t>(OpenFlag::ReadWrite),
 		bool const asyncSend = false);
 	int __start(bool const asyncSend = false);
+	ssize_t __hasData() const;
+	int __flush();
 	void __updatePortSettings();
 	mutable boost::shared_mutex rwlock;
 	QueryMode const queryMode;
@@ -208,6 +220,7 @@ private:
 		uint32_t openFlag;
 		struct termios oldTermios;
 		struct termios currentTermios;
+		std::vector<uint8_t> buffer;
 	} device;
 	struct {
 		ev_io rwio;

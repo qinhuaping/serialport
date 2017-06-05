@@ -14,6 +14,7 @@
  * ======================================================================== */
 #include "yuiwong/serialport.hpp" /* this header */
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -224,7 +225,7 @@ int SerialPort::close()
 		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
 		(void)(wLock);
 		if (this->device.fd > 0) {
-			::fsync(this->device.fd);
+			this->__flush();
 			int const ret = ::close(this->device.fd);
 			this->device.fd = -1;
 			return ret;
@@ -337,8 +338,108 @@ ssize_t SerialPort::shouldSend(int const fd)
 {
 	std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__ << ") "
 		<< "defualt implements nothing to send to fd `" << fd << "' flush\n";
-	fsync(fd);
+	this->flush();
 	return 0;
+}
+ssize_t SerialPort::hasData() const
+{
+	boost::shared_lock<boost::shared_mutex> rLock(this->rwlock);
+	(void)(rLock);
+	return this->__hasData();
+}
+ssize_t SerialPort::__hasData() const
+{
+	long bytes;
+	if (::ioctl(this->device.fd, FIONREAD, &bytes) == -1) {
+		int const e = errno;
+		std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__
+			<< ") ioctl fail " << strerror(e) << "\n";
+		if (e) {
+			return -e;
+		} else {
+			return -1;
+		}
+	}
+    return bytes;
+}
+ssize_t SerialPort::recvAll(std::vector<uint8_t>& buffer)
+{
+	boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+	boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+	(void)(wLock);
+	ssize_t const avail = this->__hasData();
+	if (avail <= 0) {
+		return avail;
+	}
+	buffer.resize(avail);
+	ssize_t const ret = ::read(this->device.fd, buffer.data(), avail);
+	if (ret > 0) {
+		buffer.resize(avail);
+	} else {
+		buffer.resize(0);
+	}
+	return ret;
+}
+ssize_t SerialPort::send(std::vector<uint8_t> const& buffer, size_t const each)
+{
+	return this->send(buffer.data(), buffer.size(), each);
+}
+ssize_t SerialPort::send(
+	uint8_t const* const buffer,
+	size_t const count,
+	size_t const each)
+{
+	boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+	boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+	(void)(wLock);
+	if (this->device.fd < 0) {
+		return -ENOENT;
+	}
+	if (!buffer) {
+		return -EINVAL;
+	}
+	size_t eachw;
+	if (each > count) {
+		eachw = count;
+	} else {
+		eachw = each;
+	}
+	ssize_t ret;
+	size_t sum = 0;
+	while (sum < count) {
+		if (eachw <= (count - sum)) {
+			ret = ::write(this->device.fd, buffer + sum, eachw);
+		} else {
+			ret = ::write(this->device.fd, buffer + sum, count - sum);
+		}
+		if (ret != static_cast<ssize_t>(eachw)) {
+			int const e = errno;
+			std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__
+				<< ") write fail " << strerror(e) << "\n";
+			if (e) {
+				return -e;
+			} else {
+				return -1;
+			}
+		}
+		sum += static_cast<size_t>(ret);
+	}
+	return sum;
+}
+int SerialPort::flush()
+{
+	boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+	boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+	(void)(wLock);
+	return this->__flush();
+}
+int SerialPort::__flush()
+{
+	if (this->device.fd < 0) {
+		return -ENODEV;
+	}
+	/* ::fsync(this->device.fd); */
+	return ::tcdrain(this->device.fd);
 }
 void SerialPort::updatePortSettings()
 {
