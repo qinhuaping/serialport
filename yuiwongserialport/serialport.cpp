@@ -23,6 +23,15 @@
 #define NAME "yuiwongserialport"
 namespace yuiwong
 {
+static inline double NowNanosec()
+{
+	timespec tp;
+	if (!clock_gettime(CLOCK_MONOTONIC, &tp)) {
+		return (tp.tv_nsec + (tp.tv_sec * 1e9));
+	} else {
+		return 0.0;
+	}
+}
 /**
  * @brief ctor / other params use default
  * @param queryMode QueryMode const& default EventDriven
@@ -245,9 +254,7 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 				} else {
 					/* cache not full or no cache and has limit rate */
 					double const each = (1.0 / fabs(eventDriven->rate)) * 1e9;
-					timespec tp;
-					clock_gettime(CLOCK_MONOTONIC, &tp);
-					double const nownsec = tp.tv_nsec + (tp.tv_sec * 1e9);
+					double const nownsec = NowNanosec();
 					if ((nownsec - eventDriven->lastCallbackRecv) >= each) {
 						callbackable = true;
 					}
@@ -271,9 +278,7 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 				boost::upgrade_to_unique_lock<boost::shared_mutex>
 					wLock(uplock);
 				(void)(wLock);
-				timespec tp;
-				clock_gettime(CLOCK_MONOTONIC, &tp);
-				double const nownsec = tp.tv_nsec + (tp.tv_sec * 1e9);
+				double const nownsec = NowNanosec();
 				eventDriven->lastCallbackRecv = nownsec;
 			}
 			/* chk ret */
@@ -604,7 +609,7 @@ ssize_t SerialPort::recv(
 	}
 	/* recv to maxRecv or till timeout */
 	size_t offset;
-	long msec;
+	double nownsec, lastnsec;
 	ssize_t recvbytes, r;
 	{
 		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
@@ -634,12 +639,11 @@ ssize_t SerialPort::recv(
 	}
 	buffer.resize(maxRecv);
 	recvbytes = offset;
-	msec = 0;
-	offset = ::time(nullptr);/* save start time */
+	nownsec = NowNanosec();
+	lastnsec = (timeoutMillisec < 0) ? -1.0 :
+		(nownsec + (1e6 * timeoutMillisec));
 	while ((recvbytes < static_cast<ssize_t>(maxRecv)) &&
-		((timeoutMillisec < 0) ||
-		(msec <= (timeoutMillisec - 10)))) {
-		usleep(10 * 1e3);
+		((timeoutMillisec < 0) || (nownsec <= lastnsec))) {
 		/* read more */
 		{
 			boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
@@ -662,10 +666,9 @@ ssize_t SerialPort::recv(
 			}
 			recvbytes += r;
 		}
-		if ((::time(nullptr) - offset) > 0) {
-			msec += (::time(nullptr) - offset) * 1000;
-		} else {
-			msec += 10;
+		usleep(10 * 1e3);
+		if (timeoutMillisec >= 0) {
+			nownsec = NowNanosec();
 		}
 	}
 	if (recvbytes < static_cast<ssize_t>(maxRecv)) {
