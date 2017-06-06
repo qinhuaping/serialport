@@ -670,10 +670,12 @@ ssize_t SerialPort::recv(
 					recvbytes = -1;
 				}
 				goto restore;
+			} else if (r > 0) {
+				recvbytes += r;
+				continue;/* fast read again */
 			}
-			recvbytes += r;
 		}
-		usleep(10 * 1e3);
+		usleep(10 * 1e3);/* wait more data */
 		if (timeoutMillisec >= 0) {
 			nownsec = NowNanosec();
 		}
@@ -776,10 +778,12 @@ std::vector<uint8_t> SerialPort::recv(
 					recvbytes = -1;
 				}
 				goto restore;
+			} else if (r > 0) {
+				recvbytes += r;
+				continue;/* fast read again */
 			}
-			recvbytes += r;
 		}
-		usleep(10 * 1e3);
+		usleep(10 * 1e3);/* wait more data */
 		if (timeoutMillisec >= 0) {
 			nownsec = NowNanosec();
 		}
