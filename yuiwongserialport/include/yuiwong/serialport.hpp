@@ -224,6 +224,9 @@ public:
 		std::vector<uint8_t>& buffer,
 		size_t const maxRecv = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE * 2,
 		long const timeoutMillisec = -1);
+	std::vector<uint8_t> recv(
+		size_t const maxRecv = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE * 2,
+		long const timeoutMillisec = -1);
 	ssize_t recvAll(std::vector<uint8_t>& buffer);
 	ssize_t send(
 		std::vector<uint8_t> const& buffer,

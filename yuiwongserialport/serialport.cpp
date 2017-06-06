@@ -23,7 +23,7 @@
 #define NAME "yuiwongserialport"
 namespace yuiwong
 {
-static inline double NowNanosec()
+static double NowNanosec()
 {
 	timespec tp;
 	if (!clock_gettime(CLOCK_MONOTONIC, &tp)) {
@@ -694,6 +694,113 @@ restore:
 		}
 	}
 	return recvbytes;
+}
+std::vector<uint8_t> SerialPort::recv(
+	size_t const maxRecv,
+	long const timeoutMillisec)
+{
+	if (maxRecv <= 0) {
+		return std::vector<uint8_t>();
+	}
+	/* chk busy */
+	{
+		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+		(void)(wLock);
+		if (this->eventDriven) {
+			if (this->eventDriven->recvMode != RecvMode::Free) {
+				return std::vector<uint8_t>();
+			}
+			this->eventDriven->recvMode = RecvMode::User;/* get */
+		}
+	}
+	/* recv to maxRecv or till timeout */
+	size_t offset;
+	double nownsec, lastnsec;
+	ssize_t recvbytes, r;
+	std::vector<uint8_t> buffer;
+	buffer.reserve(maxRecv);
+	{
+		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+		(void)(wLock);
+		if (this->eventDriven && this->eventDriven->readBuffer) {
+			if (this->eventDriven->readBuffer->size() > maxRecv) {
+				/*
+				 * 1 ensure size after copy is maxRecv
+				 * 2 be large enough for cpy(caller should ensure first)
+				 */
+				buffer.resize(maxRecv);
+				memcpy(
+					buffer.data(),
+					this->eventDriven->readBuffer->data(),
+					maxRecv);
+				/* erase cache count: maxRecv */
+				this->eventDriven->readBuffer->erase(
+					this->eventDriven->readBuffer->begin(),
+					this->eventDriven->readBuffer->begin() + maxRecv);
+				recvbytes = maxRecv;
+				goto restore;
+			} else {
+				buffer = *(this->eventDriven->readBuffer);/* copy out */
+				this->eventDriven->readBuffer->clear();/* clear cache */
+				offset = buffer.size();
+			}
+		} else {
+			offset = 0;
+		}
+	}
+	buffer.resize(maxRecv);/* ensure size after read more */
+	recvbytes = offset;
+	nownsec = NowNanosec();
+	lastnsec = (timeoutMillisec < 0) ? -1.0 :
+		(nownsec + (1e6 * timeoutMillisec));
+	while ((recvbytes < static_cast<ssize_t>(maxRecv)) &&
+		((timeoutMillisec < 0) || (nownsec <= lastnsec))) {
+		/* read more */
+		{
+			boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+			boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+			(void)(wLock);
+			r = ::read(
+				this->device.fd,
+				buffer.data() + recvbytes,
+				maxRecv - recvbytes);
+			if (r < 0) {
+				int const e = errno;
+				std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__
+					<< ") write fail " << strerror(e) << "\n";
+				if (e) {
+					recvbytes = -e;
+				} else {
+					recvbytes = -1;
+				}
+				goto restore;
+			}
+			recvbytes += r;
+		}
+		usleep(10 * 1e3);
+		if (timeoutMillisec >= 0) {
+			nownsec = NowNanosec();
+		}
+	}
+	if (recvbytes < static_cast<ssize_t>(maxRecv)) {
+		buffer.resize(recvbytes);/* incase timeout: size should be recvbytes */
+		/* caller manage capacity so no shrink_to_fit */
+		/* buffer.shrink_to_fit(); */
+		recvbytes = -ETIMEDOUT;
+	}
+restore:
+	{
+		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+		(void)(wLock);
+		if (this->eventDriven) {
+			this->eventDriven->recvMode = RecvMode::Free;/* release */
+		}
+	}
+	buffer.shrink_to_fit();
+	return buffer;
 }
 ssize_t SerialPort::recvAll(std::vector<uint8_t>& buffer)
 {
