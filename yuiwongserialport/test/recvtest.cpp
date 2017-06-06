@@ -71,7 +71,8 @@ static void case2()
 	TestSerialPort serialPort;
 	serialPort.setPortName(DEVICE);
 	serialPort.open();
-	usleep(50e3);
+	serialPort.setRate(30);
+	usleep(5e6);
 	serialPort.close();
 	serialPort.open();
 	usleep(50e3);

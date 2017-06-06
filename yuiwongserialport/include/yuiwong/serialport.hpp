@@ -45,8 +45,7 @@ namespace yuiwong {
 #ifndef YUIWONGSERIALPORT_POSIXVDISABLE
 #	define YUIWONGSERIALPORT_POSIXVDISABLE '\0'
 #endif
-#define YUIWONGSERIALPORT_DEFAULTREADBUFSIZE 8
-/* (sizeof(size_t) * 1024) */
+#define YUIWONGSERIALPORT_DEFAULTREADBUFSIZE (sizeof(size_t) * 1024)
 enum class BaudRate: uint32_t {
 	_50 = 50,/* posix only */
 	_75 = 75,/* posix only */
@@ -164,6 +163,8 @@ public:
 	void setPortName(std::string const& portName);
 	BaudRate getBaudRate() const;
 	void setBaudRate(BaudRate const& baudRate, bool const update = true);
+	/** @brief set callback rate for read when EventDriven */
+	bool setRate(double const rate);
 	bool isOpen() const;
 	/**
 	 * @brief
@@ -197,6 +198,10 @@ public:
 	/**
 	 * @brief override to read data when EventDriven
 	 * e.x. use recv or recvAll
+	 * @note
+	 * - if rate enabled shouldRecv be callbacked when cache full or
+	 * no cache or time to rate.
+	 * - if rate disabled shouldRecv be callbacked once data available
 	 * @return >= 0 when success else fail and will not callback shouldSend
 	 */
 	virtual ssize_t shouldRecv(size_t const maxAvailable);
@@ -226,7 +231,7 @@ public:
 		uint32_t const& baudRate,
 		struct termios& ter);
 private:
-	static void handlerw(struct ev_loop* mainLoop, ev_io* rwio, int event);
+	static void rwcallback(struct ev_loop* mainLoop, ev_io* rwio, int event);
 	void rwioloop();
 	inline bool __isOpen() const { return this->device.fd >= 0; }
 	/**
@@ -251,6 +256,8 @@ private:
 	struct EventDriven {
 		bool running;
 		bool terminate;
+		double rate;/* if 0.0 as fast as possible */
+		double lastCallbackRecv;/* nsec if < 0 not need update */
 		RecvMode recvMode;
 		ev_io rwio;
 		struct ev_loop* mainLoop;
@@ -259,6 +266,8 @@ private:
 		EventDriven(size_t const readBufferSz):
 			running(false),
 			terminate(false),
+			rate(0.0),
+			lastCallbackRecv(-1.0),
 			recvMode(RecvMode::Free),
 			mainLoop(nullptr),
 			thread(nullptr),

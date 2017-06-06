@@ -138,20 +138,30 @@ void SerialPort::setBaudRate(BaudRate const& baudRate, bool const update)
 			"\n";
     }
 }
-void SerialPort::handlerw(
-	struct ev_loop* /* mainLoop */,
-	ev_io* rwio,
-	int event)
+/** @brief set callback rate for read when EventDriven */
+bool SerialPort::setRate(double const rate)
+{
+	boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+	boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+	(void)(wLock);
+	if (!this->eventDriven) {
+		return false;
+	}
+	this->eventDriven->rate = fabs(rate);
+	if (fabs(rate) >= 1e-6) {
+		this->eventDriven->lastCallbackRecv = 0.0;
+	} else {
+		this->eventDriven->lastCallbackRecv = -1.0;
+	}
+	return true;
+}
+void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 {
 	if (!rwio) {
-		std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__ << ") "
-			"no rwio\n";
 		return;
 	}
 	SerialPort *const self = reinterpret_cast<SerialPort *>(rwio->data);
 	if (!self) {
-		std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__ << ") "
-			"no instance\n";
 		return;
 	}
 	boost::shared_ptr<EventDriven> eventDriven;
@@ -160,13 +170,14 @@ void SerialPort::handlerw(
 		boost::shared_lock<boost::shared_mutex> rLock(self->rwlock);
 		(void)(rLock);
 		eventDriven = self->eventDriven;
-		if ((!eventDriven)|| self->eventDriven->terminate) {
+		if ((!eventDriven) || self->eventDriven->terminate) {
 			std::cerr << "[" NAME "][WARN](" << __FILE__ << "+" << __LINE__ <<
 				") terminate called\n";
 			return;
 		}
 	}
 	if (event & EV_READ) {
+		bool callbackable = false;
 		/* cache to buffer when buffer enabled */
 		{
 			boost::upgrade_lock<boost::shared_mutex> uplock(self->rwlock);
@@ -191,27 +202,58 @@ void SerialPort::handlerw(
 						eventDriven->readBuffer->resize(oldsz + r);
 					}
 				}
+				if (eventDriven->readBuffer->size() >=
+					eventDriven->readBuffer->capacity()) {
+					callbackable = true;/* cache full */
+				}
 			}
 		}
-		/* chk and setup for callback */
 		size_t maxAvailable;
-		bool callbackable;
+		bool updateTime;
+		/* chk and setup for callback */
 		{
-			boost::upgrade_lock<boost::shared_mutex> uplock(self->rwlock);
-			boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
-			(void)(wLock);
-			if (eventDriven->recvMode == RecvMode::Free) {
-				maxAvailable = self->__hasData();
-				callbackable = true;
-			} else {
-				callbackable = false;
+			boost::shared_lock<boost::shared_mutex> rLock(self->rwlock);
+			(void)(rLock);
+			updateTime = (fabs(eventDriven->rate) >= 1e-6);
+			if (!callbackable) {
+				/* cache not full or no cache */
+				if (!updateTime) {
+					/* cache not full or no cache and no limit rate */
+					callbackable = true;
+				} else {
+					/* cache not full or no cache and has limit rate */
+					double const each = (1.0 / fabs(eventDriven->rate)) * 1e9;
+					timespec tp;
+					clock_gettime(CLOCK_MONOTONIC, &tp);
+					double const nownsec = tp.tv_nsec + (tp.tv_sec * 1e9);
+					if ((nownsec - eventDriven->lastCallbackRecv) >= each) {
+						callbackable = true;
+					}
+				}
+			}
+			if (callbackable) {
+				if (eventDriven->recvMode != RecvMode::Free) {
+					/* cache full / timeup, and not free */
+					callbackable = false;
+				} else {
+					maxAvailable = self->__hasData();
+				}
 			}
 		}
 		/* callback when ok */
 		if (callbackable) {
-			std::cout << "[" NAME "][INFO](" << __FILE__ << "+" <<
-				__LINE__ << ") " << " maxAvailable " << maxAvailable << "\n";
 			ssize_t const ret = self->shouldRecv(maxAvailable);
+			/* chk and update time */
+			if (updateTime) {
+				boost::upgrade_lock<boost::shared_mutex> uplock(self->rwlock);
+				boost::upgrade_to_unique_lock<boost::shared_mutex>
+					wLock(uplock);
+				(void)(wLock);
+				timespec tp;
+				clock_gettime(CLOCK_MONOTONIC, &tp);
+				double const nownsec = tp.tv_nsec + (tp.tv_sec * 1e9);
+				eventDriven->lastCallbackRecv = nownsec;
+			}
 			/* chk ret */
 			if (ret < 0) {
 				std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" <<
@@ -220,22 +262,8 @@ void SerialPort::handlerw(
 			}
 		}
 	}
-	/* chk terminate */
-	{
-		boost::shared_lock<boost::shared_mutex> rLock(self->rwlock);
-		(void)(rLock);
-		if (eventDriven->terminate) {
-			std::cerr << "[" NAME "][WARN](" << __FILE__ << "+" << __LINE__ <<
-				") terminate called\n";
-			return;
-		}
-	}
 	if (event & EV_WRITE) {
-		ssize_t const ret = self->shouldSend();
-		if (ret < 0) {
-			std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__ <<
-				") send fail!\n";
-		}
+		self->shouldSend();
 	}
 }
 void SerialPort::rwioloop()
@@ -386,7 +414,7 @@ int SerialPort::__start(bool const asyncSend, size_t const readBufferSz)
 	this->eventDriven = boost::make_shared<EventDriven>(readBufferSz);
 	this->eventDriven->mainLoop = ev_default_loop(0);
 	/* io 监控器的初始化 */
-	ev_init(&this->eventDriven->rwio, handlerw);
+	ev_init(&this->eventDriven->rwio, rwcallback);
 	this->eventDriven->rwio.data = this;
 	if (asyncSend && (this->device.openFlag &
 		(static_cast<uint32_t>(OpenFlag::Write)))) {
@@ -486,6 +514,10 @@ int SerialPort::stop()
 /**
  * @brief override to read data when EventDriven
  * e.x. use recv or recvAll
+ * @note
+ * - if rate enabled shouldRecv be callbacked when cache full or
+ * no cache or time to rate.
+ * - if rate disabled shouldRecv be callbacked once data available
  * @return >= 0 when success else fail and will not callback shouldSend
  */
 ssize_t SerialPort::shouldRecv(size_t const /* maxAvailable */)
