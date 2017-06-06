@@ -121,53 +121,53 @@ void SerialPort::setBaudRate(BaudRate const& baudRate, bool const update)
 		return;
 	}
 	switch(baudRate) {
-    case BaudRate::_50:
-    case BaudRate::_75:
-    case BaudRate::_134:
-    case BaudRate::_150:
-    case BaudRate::_200:
-    case BaudRate::_1800:
+	case BaudRate::_50:
+	case BaudRate::_75:
+	case BaudRate::_134:
+	case BaudRate::_150:
+	case BaudRate::_200:
+	case BaudRate::_1800:
 #	if defined(YUIWONGSERIALPORT_B76800) && (YUIWONGSERIALPORT_B76800)
 	case BaudRate::_76800:
 #	endif
 #	if defined(YUIWONGSERIALPORT_B230400) && \
 		defined(YUIWONGSERIALPORT_B4000000)
-    case BaudRate::_230400:
-    case BaudRate::_460800:
-    case BaudRate::_500000:
-    case BaudRate::_576000:
-    case BaudRate::_921600:
-    case BaudRate::_1000000:
-    case BaudRate::_1152000:
-    case BaudRate::_1500000:
-    case BaudRate::_2000000:
-    case BaudRate::_2500000:
-    case BaudRate::_3000000:
-    case BaudRate::_3500000:
-    case BaudRate::_4000000:
+	case BaudRate::_230400:
+	case BaudRate::_460800:
+	case BaudRate::_500000:
+	case BaudRate::_576000:
+	case BaudRate::_921600:
+	case BaudRate::_1000000:
+	case BaudRate::_1152000:
+	case BaudRate::_1500000:
+	case BaudRate::_2000000:
+	case BaudRate::_2500000:
+	case BaudRate::_3000000:
+	case BaudRate::_3500000:
+	case BaudRate::_4000000:
 #	endif
-    case BaudRate::_110:
-    case BaudRate::_300:
-    case BaudRate::_600:
-    case BaudRate::_1200:
-    case BaudRate::_2400:
-    case BaudRate::_4800:
-    case BaudRate::_9600:
-    case BaudRate::_19200:
-    case BaudRate::_38400:
-    case BaudRate::_57600:
-    case BaudRate::_115200: {
+	case BaudRate::_110:
+	case BaudRate::_300:
+	case BaudRate::_600:
+	case BaudRate::_1200:
+	case BaudRate::_2400:
+	case BaudRate::_4800:
+	case BaudRate::_9600:
+	case BaudRate::_19200:
+	case BaudRate::_38400:
+	case BaudRate::_57600:
+	case BaudRate::_115200: {
 		this->portSetting.baudRate = baudRate;
 		this->portSettingDirty |= static_cast<uint32_t>(Dirty::BaudRate);
 		if (update && this->__isOpen()) {
 			this->__updatePortSettings();
 		}
 	} break;
-    default:
+	default:
 		std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__ << ") "
 			"does not support baudRate " << static_cast<uint32_t>(baudRate) <<
 			"\n";
-    }
+	}
 }
 /** @brief set callback rate for read when EventDriven */
 bool SerialPort::setRate(double const rate)
@@ -589,6 +589,7 @@ ssize_t SerialPort::__hasData() const
 }
 /**
  * @param buffer std::vector<uint8_t>&: should has min @a maxRecv capacity
+ * @param timeoutMillisec long const: if is 0: read once till ok or fail
  */
 ssize_t SerialPort::recv(
 	std::vector<uint8_t>& buffer,
@@ -658,7 +659,7 @@ ssize_t SerialPort::recv(
 			(void)(wLock);
 			r = ::read(
 				this->device.fd,
-			  	buffer.data() + recvbytes,
+				buffer.data() + recvbytes,
 				maxRecv - recvbytes);
 			if (r < 0) {
 				int const e = errno;
