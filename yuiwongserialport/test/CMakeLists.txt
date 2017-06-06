@@ -75,10 +75,18 @@ target_link_libraries(opentest
   boost_system
   boost_thread
   ev)
+# recvtest
+add_executable(recvtest ${PROJECT_SOURCE_DIR}/recvtest.cpp)
+target_link_libraries(recvtest
+  yuiwongserialport
+  boost_system
+  boost_thread
+  ev)
 #set_target_properties(opentest PROPERTIES COMPILE_FLAGS "-Winline")
 ##
 # install
 #
 install(TARGETS
   opentest
+  recvtest
   DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)

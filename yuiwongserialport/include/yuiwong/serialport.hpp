@@ -45,7 +45,9 @@ namespace yuiwong {
 #ifndef YUIWONGSERIALPORT_POSIXVDISABLE
 #	define YUIWONGSERIALPORT_POSIXVDISABLE '\0'
 #endif
-enum class BaudRateType: uint32_t {
+#define YUIWONGSERIALPORT_DEFAULTREADBUFSIZE 8
+/* (sizeof(size_t) * 1024) */
+enum class BaudRate: uint32_t {
 	_50 = 50,/* posix only */
 	_75 = 75,/* posix only */
 	_134 = 134,/* posix only */
@@ -109,7 +111,7 @@ enum class FlowType: int {
  * structure to contain port settings
  */
 struct PortSetting {
-	BaudRateType baudRate;
+	BaudRate baudRate;
 	DataBitsType dataBits;
 	ParityType parityType;
 	StopBitsType stopBitsType;
@@ -141,6 +143,10 @@ public:
 		Truncate = 0x0010,
 		Text = 0x0020,
 	};
+	/**
+	 * @brief ctor
+	 * @param queryMode QueryMode const& default EventDriven
+	 */
 	SerialPort(QueryMode const& queryMode = QueryMode::EventDriven);
 	SerialPort(
 		std::string const& name,
@@ -149,18 +155,22 @@ public:
 		PortSetting const& portSetting,
 		QueryMode const& mode = QueryMode::EventDriven);
 	SerialPort(
-		std::string const& name,
+		std::string const& portName,
 		PortSetting const& portSetting,
-		QueryMode const& mode = QueryMode::EventDriven);
+		QueryMode const& queryMode = QueryMode::EventDriven);
 	~SerialPort();
 	inline QueryMode const& getQueryMode() const { return this->queryMode; }
 	std::string getPortName() const;
 	void setPortName(std::string const& portName);
+	BaudRate getBaudRate() const;
+	void setBaudRate(BaudRate const& baudRate, bool const update = true);
 	bool isOpen() const;
 	/**
 	 * @brief
 	 * opens a serial port and sets its OpenFlag to @a openFlag
 	 * (if not NotOpen)
+	 * @param readBufferSz when EventDriven and @a readBufferSz > 0 read
+	 * buffer will be alloced
 	 * @note that this function does not specify which device to open
 	 * @return
 	 * - return 0 if no any error
@@ -175,16 +185,32 @@ public:
 	 */
 	int open(
 		uint32_t const openFlag = static_cast<uint32_t>(OpenFlag::ReadWrite),
-		bool const asyncSend = false);
+		bool const asyncSend = false,
+		size_t const readBufferSz = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE);
+	/** @brief start event loop when EventDriven also open if not */
+	int start(
+		bool const asyncSend = false,
+		size_t const readBufferSz = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE);
 	/** @brief stop (if started) and close */
 	int close();
-	int start(bool const asyncSend = false);
 	int stop();
-	/** @interface shouldRecv should read data from fd */
-	virtual ssize_t shouldRecv(int const fd) = 0;
-	/** @brief override to send to fd when just fd writeable */
-	virtual ssize_t shouldSend(int const fd);
+	/**
+	 * @brief override to read data when EventDriven
+	 * e.x. use recv or recvAll
+	 * @return >= 0 when success else fail and will not callback shouldSend
+	 */
+	virtual ssize_t shouldRecv(size_t const maxAvailable);
+	/**
+	 * @brief override to send to fd when just fd writeable
+	 * when EventDriven
+	 * e.x. use send to send
+	 */
+	virtual ssize_t shouldSend();
 	ssize_t hasData() const;
+	ssize_t recv(
+		std::vector<uint8_t>& buffer,
+		size_t const maxRecv = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE * 2,
+		long const timeoutMillisec = -1);
 	ssize_t recvAll(std::vector<uint8_t>& buffer);
 	ssize_t send(
 		std::vector<uint8_t> const& buffer,
@@ -203,32 +229,61 @@ private:
 	static void handlerw(struct ev_loop* mainLoop, ev_io* rwio, int event);
 	void rwioloop();
 	inline bool __isOpen() const { return this->device.fd >= 0; }
+	/**
+	 * @name __open
+	 * @brief real open
+	 */
 	int __open(
 		uint32_t const openFlag = static_cast<uint32_t>(OpenFlag::ReadWrite),
-		bool const asyncSend = false);
-	int __start(bool const asyncSend = false);
+		bool const asyncSend = false,
+		size_t const readBufferSz = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE);
+	/** @brief real start */
+	int __start(
+		bool const asyncSend = false,
+		size_t const readBufferSz = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE);
 	ssize_t __hasData() const;
 	int __flush();
 	void __updatePortSettings();
+	enum class RecvMode {
+		Free,
+		User,
+	};
+	struct EventDriven {
+		bool running;
+		bool terminate;
+		RecvMode recvMode;
+		ev_io rwio;
+		struct ev_loop* mainLoop;
+		boost::shared_ptr<boost::thread> thread;
+		boost::shared_ptr<std::vector<uint8_t> > readBuffer;
+		EventDriven(size_t const readBufferSz):
+			running(false),
+			terminate(false),
+			recvMode(RecvMode::Free),
+			mainLoop(nullptr),
+			thread(nullptr),
+			readBuffer((readBufferSz <= 0) ? nullptr :
+				new std::vector<uint8_t>(readBufferSz, 0)) {
+				if (this->readBuffer) {
+					this->readBuffer->resize(0);
+				}
+			}
+	};
 	mutable boost::shared_mutex rwlock;
 	QueryMode const queryMode;
+	boost::shared_ptr<EventDriven> eventDriven;
 	PortSetting portSetting;
 	uint32_t portSettingDirty;
-	struct {
+	struct Device {
 		int fd;/* serial device fd */
 		std::string portName;
 		uint32_t openFlag;
 		struct termios oldTermios;
 		struct termios currentTermios;
 		std::vector<uint8_t> buffer;
+		Device(): fd(-1), portName(""), openFlag(0) {}
+		~Device() {}
 	} device;
-	struct {
-		ev_io rwio;
-		struct ev_loop* mainLoop;
-		bool running;
-		bool terminate;
-		boost::shared_ptr<boost::thread> thread;
-	} eventDrive;
 };
 }
 #endif

@@ -82,16 +82,18 @@ set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0 SOVERSION 1)
 #
 add_subdirectory(${PROJECT_SOURCE_DIR}/test)
 ## gen package config
-#set(yuiwongserialport_INCLUDE_DIRS ${CMAKE_INSTALL_PREFIX}/include)
-#configure_file(yuiwongserialport-config.cmake.in
-#  ${PROJECT_BINARY_DIR}(yuiwongserialport-config.cmake @ONLY)
-#export(PACKAGE yuiwongserialport)
+set(yuiwongserialport_INCLUDE_DIRS ${CMAKE_INSTALL_PREFIX}/include)
+set(yuiwongserialport_LIBRARIES
+  ${CMAKE_INSTALL_PREFIX}/lib/lib${PROJECT_NAME}.so)
+configure_file(yuiwongserialport-config.cmake.in
+  ${PROJECT_BINARY_DIR}/yuiwongserialport-config.cmake @ONLY)
+export(PACKAGE yuiwongserialport)
 ##
 # install
 #
 install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_static
   DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 install(DIRECTORY include DESTINATION ${CMAKE_INSTALL_PREFIX})
-#set(ConfigPackageLocation lib)
-#install(FILES ${PROJECT_BINARY_DIR}/yuiwongserialport-config.cmake
-#  DESTINATION ${ConfigPackageLocation})
+set(ConfigPackageLocation lib)
+install(FILES ${PROJECT_BINARY_DIR}/yuiwongserialport-config.cmake
+  DESTINATION ${ConfigPackageLocation})

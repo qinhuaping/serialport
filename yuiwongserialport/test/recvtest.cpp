@@ -22,14 +22,15 @@ class TestSerialPort: public yuiwong::SerialPort {
 public:
 	TestSerialPort(): yuiwong::SerialPort() {}
 	~TestSerialPort() {}
-	virtual ssize_t shouldRecv(size_t const /* maxAvailable */) override {
-		/*
+	virtual ssize_t shouldRecv(size_t const maxAvailable) override {
 		ssize_t const ret = this->recvAll(this->buffer);
 		std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__
 			<< ") recvAll ret " << ret << "\n";
-		return ret;
-		*/
-		return 0;
+		if (ret == static_cast<ssize_t>(maxAvailable)) {
+			return ret;
+		} else {
+			return -1;
+		}
 	}
 private:
 	std::vector<uint8_t> buffer;
@@ -68,23 +69,13 @@ static void case1(int argc, char** argv)
 static void case2()
 {
 	TestSerialPort serialPort;
-	std::cerr << "[" NAME "][WARN](" << __FILE__ << "+" << __LINE__
-		<< ") open default device " DEVICE "\n";
 	serialPort.setPortName(DEVICE);
-	int ret = serialPort.open();
-	std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__
-		<< ") open ret " << ret << "\n";
+	serialPort.open();
 	usleep(50e3);
-	ret = serialPort.close();
-	std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__
-		<< ") close ret " << ret << "\n";
-	ret = serialPort.open();
-	std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__
-		<< ") open ret " << ret << "\n";
+	serialPort.close();
+	serialPort.open();
 	usleep(50e3);
-	ret = serialPort.close();
-	std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__
-		<< ") close ret " << ret << "\n";
+	serialPort.close();
 	std::cout << "[" NAME "][INFO](" << __FILE__ << "+" << __LINE__ <<
 		") will done\n";
 	fflush(stdout);

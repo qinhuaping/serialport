@@ -1,0 +1,3 @@
+include(CMakeFindDependencyMacro)
+set(yuiwongserialport_INCLUDE_DIRS "@yuiwongserialport_INCLUDE_DIRS@")
+set(yuiwongserialport_LIBRARIES "@yuiwongserialport_LIBRARIES@")
