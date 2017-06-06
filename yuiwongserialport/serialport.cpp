@@ -33,9 +33,9 @@ SerialPort::SerialPort(QueryMode const& queryMode):
 {
 	this->portSetting.baudRate = BaudRate::_115200;
 	this->portSetting.parityType = ParityType::NONE;
-	this->portSetting.flowType = FlowType::OFF;
-	this->portSetting.dataBits = DataBitsType::_8;
-	this->portSetting.stopBitsType =  StopBitsType::_1;
+	this->portSetting.flowControl = FlowControl::OFF;
+	this->portSetting.dataBit = DataBit::_8;
+	this->portSetting.stopBit = StopBit::_1;
 	this->portSetting.timeoutMillisec = 10;
 	this->portSettingDirty = static_cast<uint32_t>(Dirty::ALL);
 	this->device.fd = -1;
@@ -872,7 +872,7 @@ void SerialPort::__updatePortSettings()
 			 * space parity not directly supported - add an extra data bit to
 			 * simulate it
 			 */
-			this->portSettingDirty |= static_cast<uint32_t>(Dirty::DataBits);
+			this->portSettingDirty |= static_cast<uint32_t>(Dirty::DataBit);
 			break;
 		case ParityType::NONE:
 			this->device.currentTermios.c_cflag &= (~PARENB);
@@ -887,20 +887,20 @@ void SerialPort::__updatePortSettings()
 		}
 	}
 	/* must after parity settings */
-	if (this->portSettingDirty & static_cast<uint32_t>(Dirty::DataBits)) {
+	if (this->portSettingDirty & static_cast<uint32_t>(Dirty::DataBit)) {
 		if (this->portSetting.parityType != ParityType::SPACE) {
 			this->device.currentTermios.c_cflag &= (~CSIZE);
-			switch(this->portSetting.dataBits) {
-			case DataBitsType::_5:
+			switch(this->portSetting.dataBit) {
+			case DataBit::_5:
 				this->device.currentTermios.c_cflag |= CS5;
 				break;
-			case DataBitsType::_6:
+			case DataBit::_6:
 				this->device.currentTermios.c_cflag |= CS6;
 				break;
-			case DataBitsType::_7:
+			case DataBit::_7:
 				this->device.currentTermios.c_cflag |= CS7;
 				break;
-			case DataBitsType::_8:
+			case DataBit::_8:
 				this->device.currentTermios.c_cflag |= CS8;
 				break;
 			}
@@ -910,46 +910,46 @@ void SerialPort::__updatePortSettings()
 			 * simulate it
 			 */
 			this->device.currentTermios.c_cflag &= ~(PARENB|CSIZE);
-			switch(this->portSetting.dataBits) {
-			case DataBitsType::_5:
+			switch(this->portSetting.dataBit) {
+			case DataBit::_5:
 				this->device.currentTermios.c_cflag |= CS6;
 				break;
-			case DataBitsType::_6:
+			case DataBit::_6:
 				this->device.currentTermios.c_cflag |= CS7;
 				break;
-			case DataBitsType::_7:
+			case DataBit::_7:
 				this->device.currentTermios.c_cflag |= CS8;
 				break;
-			case DataBitsType::_8:
+			case DataBit::_8:
 				/* this will never happen, put here to suppress an warning */
 				std::cerr << "[" NAME "][WARN](" << __FILE__ << "+" << __LINE__
-					<< ") DataBits _8 no update\n";
+					<< ") DataBit _8 no update\n";
 				break;
 			}
 		}
 	}
-	if (this->portSettingDirty & static_cast<uint32_t>(Dirty::StopBits)) {
-		switch (this->portSetting.stopBitsType) {
-		case StopBitsType::_1:
+	if (this->portSettingDirty & static_cast<uint32_t>(Dirty::StopBit)) {
+		switch (this->portSetting.stopBit) {
+		case StopBit::_1:
 			this->device.currentTermios.c_cflag &= (~CSTOPB);
 			break;
-		case StopBitsType::_2:
+		case StopBit::_2:
 			this->device.currentTermios.c_cflag |= CSTOPB;
 			break;
 		}
 	}
 	if (this->portSettingDirty & static_cast<uint32_t>(Dirty::Flow)) {
-		switch(this->portSetting.flowType) {
-		case FlowType::OFF:
+		switch(this->portSetting.flowControl) {
+		case FlowControl::OFF:
 			this->device.currentTermios.c_cflag &= (~CRTSCTS);
 			this->device.currentTermios.c_iflag &= (~(IXON|IXOFF|IXANY));
 			break;
-		case FlowType::XONXOFF:
+		case FlowControl::XONXOFF:
 			/* software (XON/XOFF) flow control */
 			this->device.currentTermios.c_cflag &= (~CRTSCTS);
 			this->device.currentTermios.c_iflag |= (IXON|IXOFF|IXANY);
 			break;
-		case FlowType::HARDWARE:
+		case FlowControl::HARDWARE:
 			this->device.currentTermios.c_cflag |= CRTSCTS;
 			this->device.currentTermios.c_iflag &= (~(IXON|IXOFF|IXANY));
 			break;

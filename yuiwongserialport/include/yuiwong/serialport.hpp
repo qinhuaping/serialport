@@ -85,7 +85,7 @@ enum class BaudRate: uint32_t {
 	_57600 = 57600,
 	_115200 = 115200
 };
-enum class DataBitsType: uint8_t {
+enum class DataBit: uint8_t {
 	_5 = 5,
 	_6 = 6,
 	_7 = 7,
@@ -97,11 +97,11 @@ enum class ParityType: int {
 	EVEN,
 	SPACE
 };
-enum class StopBitsType: int {
+enum class StopBit: int {
 	_1,
 	_2
 };
-enum class FlowType: int {
+enum class FlowControl: int {
 	OFF,
 	HARDWARE,
 	XONXOFF
@@ -112,10 +112,10 @@ enum class FlowType: int {
  */
 struct PortSetting {
 	BaudRate baudRate;
-	DataBitsType dataBits;
+	DataBit dataBit;
 	ParityType parityType;
-	StopBitsType stopBitsType;
-	FlowType flowType;
+	StopBit stopBit;
+	FlowControl flowControl;
 	ssize_t timeoutMillisec;
 };
 class SerialPort {
@@ -127,8 +127,8 @@ public:
 	enum class Dirty: uint32_t {
 		BaudRate = 0x0001,
 		Parity = 0x0002,
-		StopBits = 0x0004,
-		DataBits = 0x0008,
+		StopBit = 0x0004,
+		DataBit = 0x0008,
 		Flow = 0x0010,
 		TimeOut = 0x0100,
 		ALL = 0x0fff,
