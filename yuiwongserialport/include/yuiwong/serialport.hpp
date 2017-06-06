@@ -143,13 +143,18 @@ public:
 		Text = 0x0020,
 	};
 	/**
-	 * @brief ctor
+	 * @brief ctor / other params use default
 	 * @param queryMode QueryMode const& default EventDriven
 	 */
 	SerialPort(QueryMode const& queryMode = QueryMode::EventDriven);
+	/**
+	 * @brief ctor / other params use default
+	 * @param portName std::string const&: serial port name
+	 * @param queryMode QueryMode const& default EventDriven
+	 */
 	SerialPort(
-		std::string const& name,
-		QueryMode const& mode = QueryMode::EventDriven);
+		std::string const& portName,
+		QueryMode const& queryMode = QueryMode::EventDriven);
 	SerialPort(
 		PortSetting const& portSetting,
 		QueryMode const& mode = QueryMode::EventDriven);

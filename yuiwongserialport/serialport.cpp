@@ -24,7 +24,7 @@
 namespace yuiwong
 {
 /**
- * @brief ctor
+ * @brief ctor / other params use default
  * @param queryMode QueryMode const& default EventDriven
  */
 SerialPort::SerialPort(QueryMode const& queryMode):
@@ -41,14 +41,36 @@ SerialPort::SerialPort(QueryMode const& queryMode):
 	this->device.fd = -1;
 	this->device.portName.assign("/dev/ttyUSB0");
 }
+/**
+ * @brief ctor / other params use default
+ * @param portName std::string const&: serial port name
+ * @param queryMode QueryMode const& default EventDriven
+ */
+SerialPort::SerialPort(
+	std::string const& portName,
+	QueryMode const& queryMode):
+	queryMode(queryMode),
+	eventDriven(nullptr)
+{
+	this->portSetting.baudRate = BaudRate::_115200;
+	this->portSetting.parityType = ParityType::NONE;
+	this->portSetting.flowControl = FlowControl::OFF;
+	this->portSetting.dataBit = DataBit::_8;
+	this->portSetting.stopBit = StopBit::_1;
+	this->portSetting.timeoutMillisec = 10;
+	this->portSettingDirty = static_cast<uint32_t>(Dirty::ALL);
+	this->device.fd = -1;
+	this->device.portName = portName;
+}
 SerialPort::SerialPort(
 	std::string const& portName,
 	PortSetting const& portSetting,
 	QueryMode const& queryMode):
 	queryMode(queryMode),
-	eventDriven(nullptr)
+	eventDriven(nullptr),
+	portSetting(portSetting),
+	portSettingDirty(static_cast<uint32_t>(Dirty::ALL))
 {
-	this->portSetting = portSetting;
 	this->portSettingDirty = static_cast<uint32_t>(Dirty::ALL);
 	this->device.fd = -1;
 	this->device.portName = portName;
@@ -520,9 +542,11 @@ int SerialPort::stop()
  * - if rate disabled shouldRecv be callbacked once data available
  * @return >= 0 when success else fail and will not callback shouldSend
  */
-ssize_t SerialPort::shouldRecv(size_t const /* maxAvailable */)
+ssize_t SerialPort::shouldRecv(size_t const maxAvailable)
 {
-	return 0;
+	std::vector<uint8_t> buffer;
+	/* recv to eat all when dft */
+	return this->recv(buffer, maxAvailable, 1000);
 }
 /**
  * @brief override to send to fd when just fd writeable
@@ -588,20 +612,20 @@ ssize_t SerialPort::recv(
 		(void)(wLock);
 		if (this->eventDriven && this->eventDriven->readBuffer) {
 			if (this->eventDriven->readBuffer->size() > maxRecv) {
-				buffer.resize(maxRecv);
+				buffer.resize(maxRecv);/* be large enough for cpy */
 				memcpy(
 					buffer.data(),
 					this->eventDriven->readBuffer->data(),
 					maxRecv);
-				/* erase count: maxRecv */
+				/* erase cache count: maxRecv */
 				this->eventDriven->readBuffer->erase(
 					this->eventDriven->readBuffer->begin(),
 					this->eventDriven->readBuffer->begin() + maxRecv);
 				recvbytes = maxRecv;
 				goto restore;
 			} else {
-				buffer = *(this->eventDriven->readBuffer);
-				this->eventDriven->readBuffer->clear();
+				buffer = *(this->eventDriven->readBuffer);/* copy out */
+				this->eventDriven->readBuffer->clear();/* clear cache */
 				offset = buffer.size();
 			}
 		} else {
