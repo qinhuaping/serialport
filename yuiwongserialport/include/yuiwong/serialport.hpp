@@ -217,6 +217,9 @@ public:
 	 */
 	virtual ssize_t shouldSend();
 	ssize_t hasData() const;
+	/**
+	 * @param buffer std::vector<uint8_t>&: should has min @a maxRecv capacity
+	 */
 	ssize_t recv(
 		std::vector<uint8_t>& buffer,
 		size_t const maxRecv = YUIWONGSERIALPORT_DEFAULTREADBUFSIZE * 2,

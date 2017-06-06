@@ -587,6 +587,9 @@ ssize_t SerialPort::__hasData() const
 		return bytes;
 	}
 }
+/**
+ * @param buffer std::vector<uint8_t>&: should has min @a maxRecv capacity
+ */
 ssize_t SerialPort::recv(
 	std::vector<uint8_t>& buffer,
 	size_t const maxRecv,
@@ -617,7 +620,11 @@ ssize_t SerialPort::recv(
 		(void)(wLock);
 		if (this->eventDriven && this->eventDriven->readBuffer) {
 			if (this->eventDriven->readBuffer->size() > maxRecv) {
-				buffer.resize(maxRecv);/* be large enough for cpy */
+				/*
+				 * 1 ensure size after copy is maxRecv
+				 * 2 be large enough for cpy(caller should ensure first)
+				 */
+				buffer.resize(maxRecv);
 				memcpy(
 					buffer.data(),
 					this->eventDriven->readBuffer->data(),
@@ -637,7 +644,7 @@ ssize_t SerialPort::recv(
 			offset = 0;
 		}
 	}
-	buffer.resize(maxRecv);
+	buffer.resize(maxRecv);/* ensure size after read more */
 	recvbytes = offset;
 	nownsec = NowNanosec();
 	lastnsec = (timeoutMillisec < 0) ? -1.0 :
@@ -672,9 +679,9 @@ ssize_t SerialPort::recv(
 		}
 	}
 	if (recvbytes < static_cast<ssize_t>(maxRecv)) {
-		/* incase timeout */
-		buffer.resize(recvbytes);
-		buffer.shrink_to_fit();
+		buffer.resize(recvbytes);/* incase timeout: size should be recvbytes */
+		/* caller manage capacity so no shrink_to_fit */
+		/* buffer.shrink_to_fit(); */
 		recvbytes = -ETIMEDOUT;
 	}
 restore:
