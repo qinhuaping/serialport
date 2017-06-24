@@ -439,7 +439,8 @@ int SerialPort::__start(bool const asyncSend, size_t const readBufferSz)
 		return 0;
 	}
 	this->eventDriven = boost::make_shared<EventDriven>(readBufferSz);
-	this->eventDriven->mainLoop = ev_default_loop(0);
+	/* this->eventDriven->mainLoop = ev_default_loop(0); */
+	this->eventDriven->mainLoop = ev_loop_new(0);
 	/* io 监控器的初始化 */
 	ev_init(&this->eventDriven->rwio, rwcallback);
 	this->eventDriven->rwio.data = this;
