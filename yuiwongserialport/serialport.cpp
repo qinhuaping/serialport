@@ -239,7 +239,7 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 				}
 			}
 		}
-		ssize_t maxAvailable;
+		ssize_t maxAvailable = 0;
 		bool updateTime;
 		/* chk and setup for callback */
 		{
@@ -288,6 +288,17 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 				return;
 			}
 		}
+		if (maxAvailable < 0 && self->device.fd >= 0) {
+			{
+				boost::upgrade_lock<boost::shared_mutex> uplock(self->rwlock);
+				boost::upgrade_to_unique_lock<boost::shared_mutex>
+					wLock(uplock);
+				(void)(wLock);
+				::close(self->device.fd);
+				self->device.fd = -1;
+			}
+			ev_break(eventDriven->mainLoop, EVBREAK_ALL);
+		}
 	}
 	if (event & EV_WRITE) {
 		self->shouldSend();
@@ -303,7 +314,42 @@ void SerialPort::rwioloop()
 		eventDriven = this->eventDriven;
 		eventDriven->running = true;
 	}
-	ev_run(eventDriven->mainLoop, 0);
+	while (!this->eventDriven->terminate) {
+		if (this->device.fd >= 0) {
+			std::cerr << __LINE__ << " loop\n";
+			ev_run(eventDriven->mainLoop, 0);
+		}
+		if (!this->eventDriven->terminate) {
+			std::cerr << __LINE__ << " TRY REOPEN `" <<
+				getFullPortName(this->device.portName) <<
+				"' each second ...\n";
+		}
+		if (this->device.fd >= 0) {
+			boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+			boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
+			(void)(wLock);
+			::close(this->device.fd);
+			this->device.fd = -1;
+		}
+		double lastNanoSec = 0;
+		while (!this->eventDriven->terminate) {
+			if ((NowNanosec() - lastNanoSec) >= 1e9) {
+				boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
+				boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(
+					uplock);
+				(void)(wLock);
+				this->device.fd = ::open(
+					getFullPortName(this->device.portName).c_str(),
+					this->device.openFlag);
+				/* FIXME notify to release device */
+				if (this->device.fd >= 0) {
+					break;
+				}
+				lastNanoSec = NowNanosec();
+			}
+			usleep(10e3);
+		}
+	}
 	{
 		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
 		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
