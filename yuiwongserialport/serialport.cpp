@@ -239,7 +239,7 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 				}
 			}
 		}
-		size_t maxAvailable;
+		ssize_t maxAvailable;
 		bool updateTime;
 		/* chk and setup for callback */
 		{
@@ -270,7 +270,7 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 			}
 		}
 		/* callback when ok */
-		if (callbackable) {
+		if (callbackable && (maxAvailable >= 0)) {
 			ssize_t const ret = self->shouldRecv(maxAvailable);
 			/* chk and update time */
 			if (updateTime) {
