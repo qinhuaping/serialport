@@ -299,6 +299,7 @@ private:
 		int fd;/* serial device fd */
 		std::string portName;
 		uint32_t openFlag;
+		uint32_t ioFlag;
 		struct termios oldTermios;
 		struct termios currentTermios;
 		std::vector<uint8_t> buffer;

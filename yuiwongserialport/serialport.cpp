@@ -297,6 +297,7 @@ void SerialPort::rwcallback(struct ev_loop*, ev_io* rwio, int event)
 				::close(self->device.fd);
 				self->device.fd = -1;
 			}
+			ev_io_stop(eventDriven->mainLoop, &eventDriven->rwio);
 			ev_break(eventDriven->mainLoop, EVBREAK_ALL);
 		}
 	}
@@ -341,8 +342,15 @@ void SerialPort::rwioloop()
 				this->device.fd = ::open(
 					getFullPortName(this->device.portName).c_str(),
 					this->device.openFlag);
-				/* FIXME notify to release device */
+				/* FIXME notify to release device when open fail */
 				if (this->device.fd >= 0) {
+					ev_io_set(
+						&this->eventDriven->rwio,
+						this->device.fd,
+						this->device.ioFlag);
+					ev_io_start(
+						this->eventDriven->mainLoop,
+						&this->eventDriven->rwio);
 					break;
 				}
 				lastNanoSec = NowNanosec();
@@ -478,6 +486,10 @@ int SerialPort::start(bool const asyncSend, size_t const readBufferSz)
 	}
 	return this->__start(asyncSend, readBufferSz);
 }
+static void syserr(char const* msg)
+{
+	std::cerr << "serialport.cpp +" << __LINE__ << " "  << msg << "\n";
+}
 /** @brief real start */
 int SerialPort::__start(bool const asyncSend, size_t const readBufferSz)
 {
@@ -489,19 +501,18 @@ int SerialPort::__start(bool const asyncSend, size_t const readBufferSz)
 	this->eventDriven->mainLoop = ev_loop_new(0);
 	/* io 监控器的初始化 */
 	ev_init(&this->eventDriven->rwio, rwcallback);
+	ev_set_syserr_cb(syserr);
 	this->eventDriven->rwio.data = this;
 	if (asyncSend && (this->device.openFlag &
 		(static_cast<uint32_t>(OpenFlag::Write)))) {
-		ev_io_set(
-			&this->eventDriven->rwio,
-			this->device.fd,
-			EV_READ | EV_WRITE);
+		this->device.ioFlag = EV_READ | EV_WRITE;
 	} else {
-		ev_io_set(
-			&this->eventDriven->rwio,
-			this->device.fd,
-			EV_READ);
+		this->device.ioFlag = EV_READ;
 	}
+	ev_io_set(
+		&this->eventDriven->rwio,
+		this->device.fd,
+		this->device.ioFlag);
 	ev_io_start(this->eventDriven->mainLoop, &this->eventDriven->rwio);
 	this->eventDriven->thread = boost::make_shared<boost::thread>(
 		boost::bind(&SerialPort::rwioloop, this));
@@ -617,6 +628,9 @@ ssize_t SerialPort::hasData() const
 }
 ssize_t SerialPort::__hasData() const
 {
+	if (this->device.fd < 0) {
+		return -ENODEV;
+	}
 	long bytes = 0;
 	if (::ioctl(this->device.fd, FIONREAD, &bytes) == -1) {
 		int const e = errno;
@@ -643,7 +657,7 @@ ssize_t SerialPort::recv(
 	size_t const maxRecv,
 	long const timeoutMillisec)
 {
-	if (maxRecv <= 0) {
+	if (maxRecv <= 0 || this->device.fd < 0) {
 		return 0;
 	}
 	/* chk busy */
@@ -749,7 +763,7 @@ std::vector<uint8_t> SerialPort::recv(
 	size_t const maxRecv,
 	long const timeoutMillisec)
 {
-	if (maxRecv <= 0) {
+	if (maxRecv <= 0 || this->device.fd < 0) {
 		return std::vector<uint8_t>();
 	}
 	/* chk busy */
