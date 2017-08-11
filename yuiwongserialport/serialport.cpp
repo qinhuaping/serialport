@@ -650,7 +650,12 @@ ssize_t SerialPort::__hasData() const
 }
 /**
  * @param buffer std::vector<uint8_t>&: should has min @a maxRecv capacity
+ * (e.x. reserve) but not required .. here will resize
  * @param timeoutMillisec long const: if is 0: read once till ok or fail
+ * @returns
+ * - full success return received bytes and return equals maxRecv
+ * - else if return > 0 but < maxRecv means time out
+ * - return -errno when fail
  */
 ssize_t SerialPort::recv(
 	std::vector<uint8_t>& buffer,
@@ -687,7 +692,7 @@ ssize_t SerialPort::recv(
 				 * 2 be large enough for cpy(caller should ensure first)
 				 */
 				buffer.resize(maxRecv);
-				memcpy(
+				::memcpy(
 					buffer.data(),
 					this->eventDriven->readBuffer->data(),
 					maxRecv);
@@ -744,9 +749,10 @@ ssize_t SerialPort::recv(
 	}
 	if (recvbytes < static_cast<ssize_t>(maxRecv)) {
 		buffer.resize(recvbytes);/* incase timeout: size should be recvbytes */
-		/* caller manage capacity so no shrink_to_fit */
-		/* buffer.shrink_to_fit(); */
-		recvbytes = -ETIMEDOUT;
+		/**caller manage capacity so no shrink_to_fit
+		buffer.shrink_to_fit();
+		@note if recvbytes != maxRecv => ETIME so not return -ETIME
+		recvbytes = -ETIME*/
 	}
 restore:
 	{
@@ -903,7 +909,10 @@ ssize_t SerialPort::recvAll(std::vector<uint8_t>& buffer)
 			offset = 0;
 		}
 		buffer.resize(offset + avail);/* pre size max */
-		ssize_t const ret = ::read(this->device.fd, buffer.data() + offset, avail);
+		ssize_t const ret = ::read(
+			this->device.fd,
+			buffer.data() + offset,
+			avail);
 		if (ret > 0) {
 			buffer.resize(offset + ret);/* incase ret < avail */
 		} else {

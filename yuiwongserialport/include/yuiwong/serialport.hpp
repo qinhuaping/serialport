@@ -219,7 +219,12 @@ public:
 	ssize_t hasData() const;
 	/**
 	 * @param buffer std::vector<uint8_t>&: should has min @a maxRecv capacity
+	 * (e.x. reserve) but not required .. here will resize
 	 * @param timeoutMillisec long const: if is 0: read once till ok or fail
+	 * @returns
+	 * - full success return received bytes and return equals maxRecv
+	 * - else if return > 0 but < maxRecv means time out
+	 * - return -errno when fail
 	 */
 	ssize_t recv(
 		std::vector<uint8_t>& buffer,
