@@ -309,18 +309,16 @@ void SerialPort::rwioloop()
 {
 	boost::shared_ptr<EventDriven> eventDriven;
 	{
-		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
-		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
-		(void)(wLock);
+		boost::shared_lock<boost::shared_mutex> rLock(this->rwlock);
+		(void)(rLock);
 		eventDriven = this->eventDriven;
-		eventDriven->running = true;
 	}
-	while (!this->eventDriven->terminate) {
+	while (!eventDriven->terminate) {
 		if (this->device.fd >= 0) {
 			std::cerr << __LINE__ << " loop\n";
 			ev_run(eventDriven->mainLoop, 0);
 		}
-		if (!this->eventDriven->terminate) {
+		if (!eventDriven->terminate) {
 			std::cerr << __LINE__ << " TRY REOPEN `" <<
 				getFullPortName(this->device.portName) <<
 				"' each second ...\n";
@@ -333,7 +331,7 @@ void SerialPort::rwioloop()
 			this->device.fd = -1;
 		}
 		double lastNanoSec = 0;
-		while (!this->eventDriven->terminate) {
+		while (!eventDriven->terminate) {
 			if ((NowNanosec() - lastNanoSec) >= 1e9) {
 				boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
 				boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(
@@ -345,24 +343,18 @@ void SerialPort::rwioloop()
 				/* FIXME notify to release device when open fail */
 				if (this->device.fd >= 0) {
 					ev_io_set(
-						&this->eventDriven->rwio,
+						&eventDriven->rwio,
 						this->device.fd,
 						this->device.ioFlag);
 					ev_io_start(
-						this->eventDriven->mainLoop,
-						&this->eventDriven->rwio);
+						eventDriven->mainLoop,
+						&eventDriven->rwio);
 					break;
 				}
 				lastNanoSec = NowNanosec();
 			}
-			usleep(10e3);
+			::usleep(10e3);
 		}
-	}
-	{
-		boost::upgrade_lock<boost::shared_mutex> uplock(this->rwlock);
-		boost::upgrade_to_unique_lock<boost::shared_mutex> wLock(uplock);
-		(void)(wLock);
-		eventDriven->running = false;
 	}
 }
 bool SerialPort::isOpen() const
@@ -565,20 +557,6 @@ int SerialPort::stop()
 		ev_io_stop(eventDriven->mainLoop, &eventDriven->rwio);
 		/* this causes all nested ev_run's to stop iterating */
 		ev_break(eventDriven->mainLoop, EVBREAK_ALL);
-	}
-	bool r;
-	{
-		boost::shared_lock<boost::shared_mutex> rLock(this->rwlock);
-		(void)(rLock);
-		r = eventDriven->running;
-	}
-	while (r) {
-		usleep(10 * 1e3);
-		{
-			boost::shared_lock<boost::shared_mutex> rLock(this->rwlock);
-			(void)(rLock);
-			r = eventDriven->running;
-		}
 	}
 	eventDriven->thread->join();
 	struct ev_loop* mainLoop;
@@ -838,8 +816,8 @@ std::vector<uint8_t> SerialPort::recv(
 				maxRecv - recvbytes);
 			if (r < 0) {
 				int const e = errno;
-				std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << __LINE__
-					<< ") write fail " << strerror(e) << "\n";
+				std::cerr << "[" NAME "][ERRO](" << __FILE__ << "+" << \
+					__LINE__ << ") write fail " << strerror(e) << "\n";
 				if (e) {
 					recvbytes = -e;
 				} else {

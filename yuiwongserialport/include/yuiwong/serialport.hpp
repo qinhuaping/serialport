@@ -271,7 +271,6 @@ private:
 		User,
 	};
 	struct EventDriven {
-		bool running;
 		bool terminate;
 		double rate;/* if 0.0 as fast as possible */
 		double lastCallbackRecv;/* nsec if < 0 not need update */
@@ -281,7 +280,6 @@ private:
 		boost::shared_ptr<boost::thread> thread;
 		boost::shared_ptr<std::vector<uint8_t> > readBuffer;
 		EventDriven(size_t const readBufferSz):
-			running(false),
 			terminate(false),
 			rate(0.0),
 			lastCallbackRecv(-1.0),
